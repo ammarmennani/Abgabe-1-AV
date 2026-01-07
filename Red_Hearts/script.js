@@ -85,7 +85,7 @@ function onAnimationFrame() {
     const vX = velocity * Math.cos(heartAngle);
     const vY = velocity * Math.sin(heartAngle);
 
-    // --- Neu: Pointer-Anziehung hinzufügen ---
+    // Herzen werden vom Pointer angezogen
     const dxp = pointerX - x;
     const dyp = pointerY - y;
     const distp = Math.hypot(dxp, dyp) || 1;
@@ -93,7 +93,7 @@ function onAnimationFrame() {
     const attraction = Math.min(500, 1200 / (distp + 20));
     const vXtotal = vX + attraction * (dxp / distp);
     const vYtotal = vY + attraction * (dyp / distp);
-    // --- Ende Änderung ---
+    // Ende Änderung 
 
     // Bewegung
     x += vXtotal * dT;

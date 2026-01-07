@@ -1,8 +1,38 @@
 const canvas = document.getElementById('canvas');
 const context = canvas.getContext('2d');
+const clickSound = new Audio("Glass.mp3");
+clickSound.volume = 0.5;
+
+let pointerX = window.innerWidth / 2;
+let pointerY = window.innerHeight / 2;
 
 const Hearts = new Set();
 const radius = 40;
+
+// Pointer-Listener einmalig registrieren
+window.addEventListener('pointermove', (event) => {
+  pointerX = event.clientX;
+  pointerY = event.clientY;
+  // console.log(pointerX, pointerY); // debug: auskommentieren zum Testen
+});
+
+// -- Neu: pointerdown einmalig registrieren --
+canvas.addEventListener("pointerdown", (event) => {
+  const clickX = event.clientX;
+  const clickY = event.clientY;
+
+  for (let heart of Hearts) {
+    const dx = clickX - heart.x;
+    const dy = clickY - heart.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance < radius) { // Herz getroffen (Kreis-Approx.) Sound wird neu gestartet, damit er immer hörbar ist
+      clickSound.currentTime = 0;
+      clickSound.play().catch(() => {});
+      break; // nur ein Sound pro Klick
+    }
+  }
+});
 
 window.addEventListener('resize', updateCanvasSize);
 updateCanvasSize();
@@ -23,7 +53,7 @@ function updateCanvasSize() {
     const y = radius + Math.random() * (canvas.height - 2 * radius);
     const angle = 0.5 * Math.PI * Math.floor(4 * Math.random());
     const velocity = 150 + 100 * Math.random();
-
+    // velocity in pixels per second
     const Heart = {
       x: x,
       y: y,
@@ -32,7 +62,7 @@ function updateCanvasSize() {
       start: t,
       t: t,
     };
-
+    // Herzen als Objekte speichern
     Hearts.add(Heart);
   }
 }
@@ -42,21 +72,34 @@ function updateCanvasSize() {
  */
 function onAnimationFrame() {
   const t = 0.001 * performance.now();
-
+  // Bewegung hängt nicht von der Framerate ab
   context.clearRect(0, 0, canvas.width, canvas.height);
+  // Canvas jedes Frame löschen
 
   for (let Heart of Hearts) {
     let x = Heart.x;
     let y = Heart.y;
     const velocity = Heart.velocity;
-    const angle = Heart.angle;
+    const heartAngle = Heart.angle; // umbenannt, keine Redeclaration
     const dT = t - Heart.t;
-    const vX = velocity * Math.cos(angle);
-    const vY = velocity * Math.sin(angle);
+    const vX = velocity * Math.cos(heartAngle);
+    const vY = velocity * Math.sin(heartAngle);
 
-    x += vX * dT;
-    y += vY * dT;
+    // --- Neu: Pointer-Anziehung hinzufügen ---
+    const dxp = pointerX - x;
+    const dyp = pointerY - y;
+    const distp = Math.hypot(dxp, dyp) || 1;
+    // stärkere, sichtbare Anziehung; skaliert mit Distanz
+    const attraction = Math.min(500, 1200 / (distp + 20));
+    const vXtotal = vX + attraction * (dxp / distp);
+    const vYtotal = vY + attraction * (dyp / distp);
+    // --- Ende Änderung ---
 
+    // Bewegung
+    x += vXtotal * dT;
+    y += vYtotal * dT;
+
+    // Wrap-around an den Rändern
     if (x < -radius) {
       x = canvas.width + radius;
     } else if (x > canvas.width + radius) {

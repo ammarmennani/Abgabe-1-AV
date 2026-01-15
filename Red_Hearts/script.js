@@ -21,7 +21,9 @@ const socket = new WebSocket(webRoomsWebSocketServerAddr);
 // helper function to send requests over websocket to web-room server
 function sendRequest(...message) {
   const str = JSON.stringify(message);
-  socket.send(str);
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(str);
+  }
 }
 
 // listen to opening websocket connections
@@ -34,12 +36,16 @@ socket.addEventListener('open', () => {
 });
 
 // listen to messages from server
-// listen to messages from server
 socket.addEventListener('message', (event) => {
   const data = event.data;
 
   if (data.length > 0) {
-    const incoming = JSON.parse(data);
+    let incoming;
+    try {
+      incoming = JSON.parse(data);
+    } catch {
+      return;
+    }
     const selector = incoming[0];
 
     // dispatch incomming messages
@@ -47,28 +53,22 @@ socket.addEventListener('message', (event) => {
       // responds to '*enter-room*'
       case '*client-id*':
         clientId = incoming[1];
-        infoDisplay.innerHTML = `#${clientId}/${clientCount}`;
-        start();
         break;
-
-      case '*client-enter*':
-        const enterId = incoming[1];
-        console.log(`client #${enterId} has entered the room`);
+      case 'add-heart': {
+        const id = incoming[1];
+        const x = incoming[2];
+        const y = incoming[3];
+        const ownerId = incoming[4];
+        addHeart(x, y, id, true, ownerId);
         break;
-
-      case '*client-exit*':
-        const exitId = incoming[1];
-        console.log(`client #${exitId} has left the room`);
-        break;
-        
-      case '*error*': {
-        const message = incoming[1];
-        console.warn('server error:', ...message);
+      }
+      case 'break-heart': {
+        const id = incoming[1];
+        breakHeart(id, true);
         break;
       }
 
       default:
-        console.log(`unknown incoming messsage: [${incoming}]`);
         break;
     }
   }
@@ -84,7 +84,7 @@ const SPLIT_GAP = 10;
 const GRAVITY = 0.15;
 const FALL_LIMIT = 80; // ab wann ein gebrochenes Herz verschwindet
 
-const hearts = []; // Liste der Herzen { id, x, y, r, state, split, vy }
+const hearts = []; // Liste der Herzen { id, x, y, r, state, split, vy, ownerId }
 
 const clickSound = new Audio(SOUND_FILE);
 clickSound.volume = 0.6;
@@ -109,16 +109,19 @@ function makeId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 //Legt ein neues Herz im Array ab
-function addHeart(x, y, id = makeId(), force = false) {
+function addHeart(x, y, id = makeId(), force = false, ownerId = clientId) {
   if (!force && isTooClose(x, y)) {
     return;
   }
-  hearts.push({ id, x, y, r: HEART_RADIUS, state: 'whole', split: 0, vy: 0 });
+  hearts.push({ id, x, y, r: HEART_RADIUS, state: 'whole', split: 0, vy: 0, ownerId });
 }
 
-function breakHeart(id) {
+function breakHeart(id, force = false) {
   const h = hearts.find(item => item.id === id);
   if (!h || h.state !== 'whole') {
+    return;
+  }
+  if (!force && h.ownerId !== clientId) {
     return;
   }
   h.state = 'broken';
@@ -132,7 +135,7 @@ function breakHeart(id) {
 function getHeartAt(x, y) {
   for (let i = hearts.length - 1; i >= 0; i -= 1) {
     const h = hearts[i];
-    if (h.state === 'whole' && isPointInHeart(x, y, h.r, h.x, h.y)) {
+    if (h.state === 'whole' && h.ownerId === clientId && isPointInHeart(x, y, h.r, h.x, h.y)) {
       return h;
     }
   }
@@ -154,7 +157,7 @@ canvas.addEventListener('pointerdown', (e) => {
 
   const id = makeId();
   addHeart(x, y, id);
-  sendRequest('*broadcast-message*', ['add-heart', id, x, y]);
+  sendRequest('*broadcast-message*', ['add-heart', id, x, y, clientId]);
 });
 
 function buildHeartPath(x, y, r) {
@@ -170,10 +173,10 @@ function isPointInHeart(px, py, r, x, y) {
 }
 
 // Zeichne ein Herz mit Bézier-Kurven (einfaches Herz)
-function drawHeart(x, y, r) {
+function drawHeart(x, y, r, color = 'red') {
   buildHeartPath(x, y, r);
-  ctx.fillStyle = 'red';
-  ctx.strokeStyle = 'red';
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
   ctx.fill();
   ctx.stroke();
 }
@@ -194,7 +197,8 @@ function drawBrokenHeart(h) {
   ctx.beginPath();
   ctx.rect(clipLeftX, yTop, splitXLeft - clipLeftX, yBottom - yTop);
   ctx.clip();
-  drawHeart(h.x + leftOffset, h.y, h.r);
+  const color = h.ownerId === clientId ? 'red' : '#777';
+  drawHeart(h.x + leftOffset, h.y, h.r, color);
   ctx.restore();
 
   // links: nur linke Seite sichtbar, rechts: nur rechte Seite sichtbar
@@ -202,7 +206,7 @@ function drawBrokenHeart(h) {
   ctx.beginPath();
   ctx.rect(splitXRight, yTop, clipRightX - splitXRight, yBottom - yTop);
   ctx.clip();
-  drawHeart(h.x + rightOffset, h.y, h.r);
+  drawHeart(h.x + rightOffset, h.y, h.r, color);
   ctx.restore();
 
   
@@ -213,8 +217,9 @@ function loop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (let i = hearts.length - 1; i >= 0; i -= 1) {
     const h = hearts[i];
+    const color = h.ownerId === clientId ? 'red' : '#777';
     if (h.state === 'whole') {
-      drawHeart(h.x, h.y, h.r);
+      drawHeart(h.x, h.y, h.r, color);
       continue;
     }
 

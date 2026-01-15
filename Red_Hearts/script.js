@@ -8,9 +8,8 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 /*************************************
- * 
+ * websocket communication
  */
-
 const webRoomsWebSocketServerAddr = 'wss://nosch.uber.space/web-rooms/';
 
 // variables
@@ -29,10 +28,14 @@ function sendRequest(...message) {
 // listen to opening websocket connections
 socket.addEventListener('open', () => {
   sendRequest('*enter-room*', 'red-hearts');
-  sendRequest('*subscribe-client-enter-exit*');
+  sendRequest('*subscribe-client-count*');
 
   // ping the server regularly with an empty message to prevent the socket from closing
   setInterval(() => socket.send(''), 30000);
+});
+
+socket.addEventListener('close', () => {
+  clientId = null;
 });
 
 // listen to messages from server
@@ -40,19 +43,18 @@ socket.addEventListener('message', (event) => {
   const data = event.data;
 
   if (data.length > 0) {
-    let incoming;
-    try {
-      incoming = JSON.parse(data);
-    } catch {
-      return;
-    }
+    const incoming = JSON.parse(data);
     const selector = incoming[0];
 
     // dispatch incomming messages
     switch (selector) {
-      // responds to '*enter-room*'
       case '*client-id*':
-        clientId = incoming[1];
+        clientId = incoming[1] + 1;
+        for (const h of hearts) {
+          if (h.ownerId == null) {
+            h.ownerId = clientId;
+          }
+        }
         break;
       case 'add-heart': {
         const id = incoming[1];
@@ -67,7 +69,11 @@ socket.addEventListener('message', (event) => {
         breakHeart(id, true);
         break;
       }
-
+      case '*error*': {
+        const message = incoming[1];
+        console.warn('server error:', ...message);
+        break;
+      }
       default:
         break;
     }
@@ -99,7 +105,11 @@ resizeCanvas();
 
 // Prüfe, ob an (x,y) schon ein Herz zu nah ist, Überlappung vermeiden
 function isTooClose(x, y) {
-  return hearts.some(h => Math.hypot(h.x - x, h.y - y) < (h.r + HEART_RADIUS));
+  return hearts.some(h => {
+    const hx = h.x * canvas.width;
+    const hy = h.y * canvas.height;
+    return Math.hypot(hx - x, hy - y) < (h.r + HEART_RADIUS);
+  });
 }
 //Gibt jedem Herz eine eindeutige ID, wichtig später für webromms
 function makeId() {
@@ -110,7 +120,9 @@ function makeId() {
 }
 //Legt ein neues Herz im Array ab
 function addHeart(x, y, id = makeId(), force = false, ownerId = clientId) {
-  if (!force && isTooClose(x, y)) {
+  const px = x * canvas.width;
+  const py = y * canvas.height;
+  if (!force && isTooClose(px, py)) {
     return;
   }
   hearts.push({ id, x, y, r: HEART_RADIUS, state: 'whole', split: 0, vy: 0, ownerId });
@@ -135,7 +147,9 @@ function breakHeart(id, force = false) {
 function getHeartAt(x, y) {
   for (let i = hearts.length - 1; i >= 0; i -= 1) {
     const h = hearts[i];
-    if (h.state === 'whole' && h.ownerId === clientId && isPointInHeart(x, y, h.r, h.x, h.y)) {
+    const hx = h.x * canvas.width;
+    const hy = h.y * canvas.height;
+    if (h.state === 'whole' && h.ownerId === clientId && isPointInHeart(x, y, h.r, hx, hy)) {
       return h;
     }
   }
@@ -156,8 +170,10 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 
   const id = makeId();
-  addHeart(x, y, id);
-  sendRequest('*broadcast-message*', ['add-heart', id, x, y, clientId]);
+  const nx = x / canvas.width;
+  const ny = y / canvas.height;
+  addHeart(nx, ny, id);
+  sendRequest('*broadcast-message*', ['add-heart', id, nx, ny, clientId]);
 });
 
 function buildHeartPath(x, y, r) {
@@ -182,13 +198,15 @@ function drawHeart(x, y, r, color = 'red') {
 }
 
 function drawBrokenHeart(h) {
-  const yTop = h.y - h.r * 0.6;
-  const yBottom = h.y + h.r;
+  const hx = h.x * canvas.width;
+  const hy = h.y * canvas.height;
+  const yTop = hy - h.r * 0.6;
+  const yBottom = hy + h.r;
   const gap = h.split;
-  const splitXLeft = h.x - gap / 2;
-  const splitXRight = h.x + gap / 2;
-  const clipLeftX = h.x - h.r * 2;
-  const clipRightX = h.x + h.r * 2;
+  const splitXLeft = hx - gap / 2;
+  const splitXRight = hx + gap / 2;
+  const clipLeftX = hx - h.r * 2;
+  const clipRightX = hx + h.r * 2;
 
   const leftOffset = -gap / 2;
   const rightOffset = gap / 2;
@@ -198,7 +216,7 @@ function drawBrokenHeart(h) {
   ctx.rect(clipLeftX, yTop, splitXLeft - clipLeftX, yBottom - yTop);
   ctx.clip();
   const color = h.ownerId === clientId ? 'red' : '#777';
-  drawHeart(h.x + leftOffset, h.y, h.r, color);
+  drawHeart(hx + leftOffset, hy, h.r, color);
   ctx.restore();
 
   // links: nur linke Seite sichtbar, rechts: nur rechte Seite sichtbar
@@ -206,7 +224,7 @@ function drawBrokenHeart(h) {
   ctx.beginPath();
   ctx.rect(splitXRight, yTop, clipRightX - splitXRight, yBottom - yTop);
   ctx.clip();
-  drawHeart(h.x + rightOffset, h.y, h.r, color);
+  drawHeart(hx + rightOffset, hy, h.r, color);
   ctx.restore();
 
   
@@ -219,15 +237,17 @@ function loop() {
     const h = hearts[i];
     const color = h.ownerId === clientId ? 'red' : '#777';
     if (h.state === 'whole') {
-      drawHeart(h.x, h.y, h.r, color);
+      const hx = h.x * canvas.width;
+      const hy = h.y * canvas.height;
+      drawHeart(hx, hy, h.r, color);
       continue;
     }
 
     if (h.state === 'broken') {
       h.y += h.vy;
-      h.vy += GRAVITY;
+      h.vy += (GRAVITY / canvas.height);
       drawBrokenHeart(h);
-      if (h.y > (canvas.height + FALL_LIMIT)) {
+      if (h.y > (1 + (FALL_LIMIT / canvas.height))) {
         hearts.splice(i, 1);
       }
     }

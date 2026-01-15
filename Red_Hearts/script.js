@@ -133,9 +133,6 @@ function breakHeart(id, force = false) {
   if (!h || h.state !== 'whole') {
     return;
   }
-  if (!force && h.ownerId !== clientId) {
-    return;
-  }
   h.state = 'broken';
   h.split = SPLIT_GAP;
   h.vy = 0;
@@ -149,7 +146,7 @@ function getHeartAt(x, y) {
     const h = hearts[i];
     const hx = h.x * canvas.width;
     const hy = h.y * canvas.height;
-    if (h.state === 'whole' && h.ownerId === clientId && isPointInHeart(x, y, h.r, hx, hy)) {
+    if (h.state === 'whole' && isPointInHeart(x, y, h.r, hx, hy)) {
       return h;
     }
   }
@@ -165,15 +162,15 @@ canvas.addEventListener('pointerdown', (e) => {
   const hit = getHeartAt(x, y);
   if (hit) {
     breakHeart(hit.id);
-    sendRequest('*broadcast-message*', ['break-heart', hit.id]);
+    sendRequest('*broadcast-message*', ['break-heart', hit.id]); //alle sehen das gebrochene Herz
     return;
   }
-
+//Alle Clients sehen Herzen an derselben relativen Position
   const id = makeId();
   const nx = x / canvas.width;
   const ny = y / canvas.height;
   addHeart(nx, ny, id);
-  sendRequest('*broadcast-message*', ['add-heart', id, nx, ny, clientId]);
+  sendRequest('*broadcast-message*', ['add-heart', id, nx, ny, clientId]); //alle sehen das neue Herz
 });
 
 function buildHeartPath(x, y, r) {

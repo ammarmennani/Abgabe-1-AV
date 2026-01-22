@@ -85,7 +85,7 @@ socket.addEventListener('message', (event) => {
  */
 
 const HEART_RADIUS = 70; // Größe der Herzen
-const SOUND_FILE = 'Glass.mp3'; // muss im gleichen Ordner liegen
+const SOUND_FILE = 'Glass.mp3';
 const SPLIT_GAP = 10;
 const GRAVITY = 0.15;
 const FALL_LIMIT = 80; // ab wann ein gebrochenes Herz verschwindet
@@ -118,7 +118,7 @@ function makeId() {
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
-//Legt ein neues Herz im Array ab
+// Füge ein Herz an relativer Position (x,y) hinzu
 function addHeart(x, y, id = makeId(), force = false, ownerId = clientId) {
   const px = x * canvas.width;
   const py = y * canvas.height;
@@ -128,6 +128,7 @@ function addHeart(x, y, id = makeId(), force = false, ownerId = clientId) {
   hearts.push({ id, x, y, r: HEART_RADIUS, state: 'whole', split: 0, vy: 0, ownerId });
 }
 
+// Bricht ein Herz mit gegebener ID
 function breakHeart(id, force = false) {
   const h = hearts.find(item => item.id === id);
   if (!h || h.state !== 'whole') {
@@ -141,6 +142,7 @@ function breakHeart(id, force = false) {
   clickSound.play().catch(() => {});
 }
 
+// Prüfe, ob an (x,y) ein ganzes Herz ist (um es zu brechen)
 function getHeartAt(x, y) {
   for (let i = hearts.length - 1; i >= 0; i -= 1) {
     const h = hearts[i];
@@ -173,6 +175,7 @@ canvas.addEventListener('pointerdown', (e) => {
   sendRequest('*broadcast-message*', ['add-heart', id, nx, ny, clientId]); //alle sehen das neue Herz
 });
 
+// Baue den Pfad für ein Herz (Bézier-Kurven)
 function buildHeartPath(x, y, r) {
   ctx.beginPath();
   ctx.moveTo(x, y + r / 4);
@@ -180,6 +183,7 @@ function buildHeartPath(x, y, r) {
   ctx.bezierCurveTo(x - r * 1.5, y + r / 2, x - r, y - r / 2, x, y + r / 4);
 }
 
+// Prüfe, ob Punkt (px,py) im Herz liegt
 function isPointInHeart(px, py, r, x, y) {
   buildHeartPath(x, y, r);
   return ctx.isPointInPath(px, py);
@@ -194,6 +198,7 @@ function drawHeart(x, y, r, color = 'red') {
   ctx.stroke();
 }
 
+// Zeichne ein gebrochenes Herz
 function drawBrokenHeart(h) {
   const hx = h.x * canvas.width;
   const hy = h.y * canvas.height;

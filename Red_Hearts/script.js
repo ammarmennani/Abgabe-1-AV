@@ -4,7 +4,7 @@
 // - Verhindert einfache Überlappung (falls zu nah, wird kein Herz erzeugt)
 // - Zeichnet die Herzen im Animationsloop
 
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('canvas'); // Webcanvas 
 const ctx = canvas.getContext('2d');
 
 /*************************************
@@ -15,7 +15,7 @@ const webRoomsWebSocketServerAddr = 'wss://nosch.uber.space/web-rooms/';
 // variables
 let clientId = null; // client ID sent by web-rooms server when calling 'enter-room'
 
-const socket = new WebSocket(webRoomsWebSocketServerAddr);
+const socket = new WebSocket(webRoomsWebSocketServerAddr); 
 
 // helper function to send requests over websocket to web-room server
 function sendRequest(...message) {
@@ -92,7 +92,7 @@ const FALL_LIMIT = 80; // ab wann ein gebrochenes Herz verschwindet
 
 const hearts = []; // Liste der Herzen { id, x, y, r, state, split, vy, ownerId }
 
-const clickSound = new Audio(SOUND_FILE);
+const clickSound = new Audio(SOUND_FILE); //Webaudio
 clickSound.volume = 0.6;
 
 // Canvas auf Fenstergröße setzen
